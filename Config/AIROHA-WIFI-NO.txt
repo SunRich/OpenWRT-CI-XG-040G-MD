@@ -34,3 +34,6 @@ CONFIG_PACKAGE_luci-app-ddns-go=y
 #WireGuard
 CONFIG_PACKAGE_wireguard-tools=y
 CONFIG_PACKAGE_luci-proto-wireguard=y
+#Tailscale
+CONFIG_PACKAGE_tailscale=y
+CONFIG_PACKAGE_luci-app-tailscale=y

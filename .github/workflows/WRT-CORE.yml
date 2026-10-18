@@ -208,7 +208,19 @@ jobs:
         run: |
           cd ./wrt/
 
-          make -j$(nproc) || make -j1 V=s
+          bash "$GITHUB_WORKSPACE/Scripts/Build-With-Progress.sh" "$(nproc)"
+
+      - name: Preserve Build Diagnostics
+        if: always() && env.WRT_TEST != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics-${{github.run_id}}
+          path: |
+            ./wrt/logs/
+            ./wrt/.config
+          include-hidden-files: true
+          retention-days: 3
+          if-no-files-found: ignore
 
       - name: Validate XG-040G-MD UBI Firmware
         if: env.WRT_CONFIG == 'AIROHA-WIFI-NO' && env.WRT_TEST != 'true'

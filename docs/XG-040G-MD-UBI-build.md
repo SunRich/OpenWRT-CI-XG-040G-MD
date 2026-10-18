@@ -22,6 +22,8 @@
 
 在 GitHub Actions 的 AIR-ALL 页面选择包含本次修改的分支，保持 TEST 关闭，运行完整构建。
 产物发布在 GitHub Releases。`source-commit.txt` 与 `ci-commit.txt` 记录实际使用的源码。
+编译时每 45 秒输出进程名、CPU 使用率和磁盘空间；构建日志与有效 `.config`
+另存为 Actions 的 `build-diagnostics-*` 附件，保留 3 天，用于定位工具链或软件包构建阻塞。
 
 ## 构建检查
 

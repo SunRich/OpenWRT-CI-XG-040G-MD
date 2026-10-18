@@ -85,6 +85,9 @@ UPDATE_PACKAGE "qmodem" "FUjr/QModem" "main"
 #UPDATE_PACKAGE "vnt" "lmq8267/luci-app-vnt" "main"
 # 原 bingoguo93 插件仓库已不可访问，使用同名插件的原作者仓库。
 UPDATE_PACKAGE "luci-app-airoha-npu" "rchen14b/luci-app-airoha-npu" "main" "" "" "14521b8414da1e98517a295d8ec267087c7dde8e"
+# 该提交还保留一份旧的嵌套包，其相对 luci.mk 路径不适用于 package/。
+# 使用仓库根目录的新版 Makefile，避免扫描到同名旧包。
+rm -rf -- ./luci-app-airoha-npu/luci-app-airoha-npu
 
 #更新软件包版本
 UPDATE_VERSION() {

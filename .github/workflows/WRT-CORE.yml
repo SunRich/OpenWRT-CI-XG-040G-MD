@@ -192,6 +192,7 @@ jobs:
           cd ./wrt/
           python3 "$GITHUB_WORKSPACE/Scripts/Validate-XG040G-UBI.py" \
             --config .config \
+            --theme "$WRT_THEME" \
             --seed "$GITHUB_WORKSPACE/Config/AIROHA-WIFI-NO.txt" \
             --seed "$GITHUB_WORKSPACE/Config/GENERAL.txt"
 
@@ -215,6 +216,7 @@ jobs:
           cd ./wrt/
           python3 "$GITHUB_WORKSPACE/Scripts/Validate-XG040G-UBI.py" \
             --config .config \
+            --theme "$WRT_THEME" \
             --seed "$GITHUB_WORKSPACE/Config/AIROHA-WIFI-NO.txt" \
             --seed "$GITHUB_WORKSPACE/Config/GENERAL.txt" \
             --target-dir bin/targets/airoha/an7581 \

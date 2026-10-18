@@ -68,13 +68,14 @@ def number(value):
     return int.from_bytes(value, "big")
 
 
-def check_config(path, seeds):
+def check_config(path, seeds, theme=None):
     data = path.read_text()
     selected = re.findall(r"^(CONFIG_TARGET_DEVICE_\S+)=y$", data, re.M)
     require(selected == [TARGET], "Effective configuration must select only " + TARGET)
     enabled = set(re.findall(r"^(CONFIG_\S+)=y$", data, re.M))
-    required = {"CONFIG_PACKAGE_fitblk", "CONFIG_PACKAGE_luci", "CONFIG_TARGET_airoha_an7581",
-                "CONFIG_PACKAGE_luci-theme-argon", "CONFIG_PACKAGE_luci-app-argon-config"}
+    required = {"CONFIG_PACKAGE_fitblk", "CONFIG_PACKAGE_luci", "CONFIG_TARGET_airoha_an7581"}
+    if theme:
+        required.update({"CONFIG_PACKAGE_luci-theme-" + theme, "CONFIG_PACKAGE_luci-app-" + theme + "-config"})
     forbidden = set()
     for seed in seeds:
         for name, value in re.findall(r"^(CONFIG_PACKAGE_\S+)=(y|n)$", seed.read_text(), re.M):
@@ -157,25 +158,29 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path)
     parser.add_argument("--seed", type=Path, action="append", default=[])
+    parser.add_argument("--theme", help="Validate the theme selected by the calling workflow")
     parser.add_argument("--image", type=Path)
+    parser.add_argument("--manifest", type=Path, help="Device manifest, including renamed release assets")
     parser.add_argument("--target-dir", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     report = {"validation": "pbs05-v2026.07-4-ubi-fit"}
     if args.config:
-        report["config"] = check_config(args.config, args.seed)
+        report["config"] = check_config(args.config, args.seed, args.theme)
     if args.target_dir:
         candidates = list(args.target_dir.glob("*" + PROFILE + "-squashfs-sysupgrade.itb"))
         require(len(candidates) == 1, "Expected exactly one UBI sysupgrade ITB, got " + repr(candidates))
         args.image = candidates[0]
         manifests = list(args.target_dir.glob("*" + PROFILE + ".manifest"))
         require(len(manifests) == 1, "Missing per-device package manifest")
-        packages = {line.split(" - ", 1)[0] for line in manifests[0].read_text().splitlines()}
+        args.manifest = manifests[0]
+    if args.manifest:
+        packages = {line.split(" - ", 1)[0] for line in args.manifest.read_text().splitlines()}
         required = set(report.get("config", {}).get("required_packages", []))
         forbidden = set(report.get("config", {}).get("disabled_packages", []))
         require(required <= packages, "Packages absent from device manifest: " + repr(sorted(required - packages)))
         require(not forbidden & packages, "Disabled packages present in device manifest: " + repr(sorted(forbidden & packages)))
-        report["manifest"] = {"file": manifests[0].name, "package_count": len(packages), "required_packages_present": sorted(required)}
+        report["manifest"] = {"file": args.manifest.name, "package_count": len(packages), "required_packages_present": sorted(required)}
     if args.image:
         report["image"] = check_image(args.image)
     require(args.config or args.image, "Provide --config, --image or --target-dir")

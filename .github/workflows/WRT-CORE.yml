@@ -218,6 +218,9 @@ jobs:
           path: |
             ./wrt/logs/
             ./wrt/.config
+            ./wrt/bin/targets/airoha/an7581/*.itb
+            ./wrt/bin/targets/airoha/an7581/*.manifest
+            ./wrt/bin/targets/airoha/an7581/profiles.json
           include-hidden-files: true
           retention-days: 3
           if-no-files-found: ignore
@@ -232,6 +235,7 @@ jobs:
             --seed "$GITHUB_WORKSPACE/Config/AIROHA-WIFI-NO.txt" \
             --seed "$GITHUB_WORKSPACE/Config/GENERAL.txt" \
             --target-dir bin/targets/airoha/an7581 \
+            --unsquashfs staging_dir/host/bin/unsquashfs4 \
             --output ubi-compatibility.json
           git rev-parse HEAD > source-commit.txt
           git -C "$GITHUB_WORKSPACE" rev-parse HEAD > ci-commit.txt
@@ -255,8 +259,14 @@ jobs:
           cp -f ./.config ./upload/Config-"$WRT_CONFIG"-"$WRT_INFO"-"$WRT_BRANCH"-"$WRT_DATE".txt
 
           if [[ $WRT_TEST != 'true' ]]; then
-            echo "WRT_KVER=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^kernel - \K[\d\.]+' {} \;)" >> $GITHUB_ENV
-            echo "WRT_LIST=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^luci-(app|theme)[^ ]*' {} \; | tr '\n' ' ')" >> $GITHUB_ENV
+            if [[ -f ubi-compatibility.json ]]; then
+              WRT_MANIFEST="./bin/targets/airoha/an7581/$(python3 -c 'import json; print(json.load(open("ubi-compatibility.json"))["manifest"]["file"])')"
+            else
+              WRT_MANIFEST=$(find ./bin/targets/ -type f -name '*.manifest' -print -quit)
+            fi
+            test -f "$WRT_MANIFEST"
+            echo "WRT_KVER=$(grep -oP '^kernel - \K[\d\.]+' "$WRT_MANIFEST")" >> $GITHUB_ENV
+            echo "WRT_LIST=$(grep -oP '^luci-(app|theme)[^ ]*' "$WRT_MANIFEST" | tr '\n' ' ')" >> $GITHUB_ENV
 
             find ./bin/targets/ -type d -name packages -prune -exec rm -rf {} +
             find ./bin/targets/ -type f -name sha256sums -delete

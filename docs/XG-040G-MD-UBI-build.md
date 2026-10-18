@@ -22,13 +22,17 @@
 
 在 GitHub Actions 的 AIR-ALL 页面选择包含本次修改的分支，保持 TEST 关闭，运行完整构建。
 产物发布在 GitHub Releases。`source-commit.txt` 与 `ci-commit.txt` 记录实际使用的源码。
-编译时每 45 秒输出进程名、CPU 使用率和磁盘空间；构建日志与有效 `.config`
-另存为 Actions 的 `build-diagnostics-*` 附件，保留 3 天，用于定位工具链或软件包构建阻塞。
+编译时每 45 秒输出进程名、CPU 使用率和磁盘空间；构建日志、有效 `.config` 和原始
+ITB/清单另存为 Actions 的 `build-diagnostics-*` 附件，保留 3 天，用于定位构建或校验问题。
+诊断附件可能尚未通过校验，不能视为可安装的发布固件。
 
 ## 构建检查
 
 `Scripts/Validate-XG040G-UBI.py` 在 `make defconfig` 后确认设备与关键插件有效；
-编译后检查每设备 manifest 和唯一的 `*-nokia_xg-040g-md-ubi-squashfs-sysupgrade.itb`：
+编译后检查唯一的 `*-nokia_xg-040g-md-ubi-squashfs-sysupgrade.itb`，再用构建工具
+`staging_dir/host/bin/unsquashfs4` 读取其 FIT 根文件系统中的 opkg/APK 已安装数据库，
+生成设备专属 manifest。上游多设备模式生成的通用清单来自 `root.orig`，不包含
+后加入的设备默认包，不能用它代替实际镜像检查。
 
 1. FIT 所有镜像的数据范围、CRC/SHA 哈希有效，默认配置引用 ARM64 内核。
 2. 根文件系统以 filesystem loadable 参与 FIT，内容是 SquashFS。

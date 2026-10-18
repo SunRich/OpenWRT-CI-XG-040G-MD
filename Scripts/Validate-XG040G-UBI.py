@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import re
 import struct
+import subprocess
+import tempfile
 import zlib
 
 BOARD = "nokia,xg-040g-md-ubi"
@@ -95,7 +97,7 @@ def check_config(path, seeds, theme=None):
             "disabled_packages": sorted(x.removeprefix("CONFIG_PACKAGE_") for x in forbidden)}
 
 
-def check_image(path):
+def check_image(path, rootfs_output=None):
     blob = path.read_bytes()
     fit_size, nodes = fdt(blob)
     images = {}
@@ -149,9 +151,38 @@ def check_image(path):
     require({"fit", "fip", "bosa", "ri", "ubootenv", "ubootenv2"} <= volumes.keys(), "Required UBI volumes missing from device tree")
     require(dt["/chosen"]["rootdisk"] == volumes["fit"]["phandle"], "Root disk must reference the fit volume")
     require(len(blob) < 0xFFE0000 - 16 * 0x20000, "Image too large for UBI plus boot/identity volumes")
+    if rootfs_output:
+        rootfs_output.write_bytes(roots[0][1])
     return {"file": path.name, "size": len(blob), "sha256": hashlib.sha256(blob).hexdigest(),
             "compatible": compatible, "partitions": partitions,
             "images": {name: {"size": len(v[1]), "hashes": v[2]} for name, v in images.items()}}
+
+
+def rootfs_manifest(rootfs, unsquashfs):
+    """Read the installed database from the exact FIT rootfs, not root.orig."""
+    for database, package_key, version_key in (
+        ("usr/lib/opkg/status", "Package", "Version"),
+        ("lib/apk/db/installed", "P", "V"),
+    ):
+        result = subprocess.run([str(unsquashfs), "-cat", str(rootfs), database],
+                                capture_output=True, timeout=60)
+        if result.returncode:
+            continue
+        packages = {}
+        for stanza in result.stdout.decode().split("\n\n"):
+            fields = dict(line.split(":", 1) for line in stanza.splitlines()
+                          if ":" in line and not line.startswith((" ", "\t")))
+            name = fields.get(package_key, "").strip()
+            version = fields.get(version_key, "").strip()
+            if not name or not version:
+                continue
+            if package_key == "Package" and fields.get("Status", "").split()[-1:] != ["installed"]:
+                continue
+            require(name not in packages, "Duplicate installed package: " + name)
+            packages[name] = version
+        require(bool(packages), "Empty or unsupported package database: " + database)
+        return "".join(name + " - " + packages[name] + "\n" for name in sorted(packages)), database
+    raise ValueError("Cannot read installed opkg/APK package database from FIT rootfs")
 
 
 def main():
@@ -161,6 +192,7 @@ def main():
     parser.add_argument("--theme", help="Validate the theme selected by the calling workflow")
     parser.add_argument("--image", type=Path)
     parser.add_argument("--manifest", type=Path, help="Device manifest, including renamed release assets")
+    parser.add_argument("--unsquashfs", type=Path, help="Read packages from the actual FIT SquashFS payload")
     parser.add_argument("--target-dir", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -171,9 +203,23 @@ def main():
         candidates = list(args.target_dir.glob("*" + PROFILE + "-squashfs-sysupgrade.itb"))
         require(len(candidates) == 1, "Expected exactly one UBI sysupgrade ITB, got " + repr(candidates))
         args.image = candidates[0]
-        manifests = list(args.target_dir.glob("*" + PROFILE + ".manifest"))
-        require(len(manifests) == 1, "Missing per-device package manifest")
-        args.manifest = manifests[0]
+        # Multi-profile OpenWrt emits a generic root.orig manifest, which omits
+        # device defaults such as fitblk. Generate this profile's manifest from
+        # the package database inside its own, hash-verified FIT rootfs.
+        require(args.unsquashfs, "--target-dir requires --unsquashfs for per-device package verification")
+        args.manifest = args.target_dir / (args.image.name.removesuffix("-squashfs-sysupgrade.itb") + ".manifest")
+    if args.unsquashfs:
+        require(args.image and args.manifest, "--unsquashfs requires an image and manifest destination")
+        with tempfile.TemporaryDirectory(prefix="xg040g-rootfs-") as directory:
+            rootfs = Path(directory) / "root.squashfs"
+            report["image"] = check_image(args.image, rootfs)
+            manifest, database = rootfs_manifest(rootfs, args.unsquashfs)
+        if args.target_dir:
+            args.manifest.write_text(manifest)
+        else:
+            require(sorted(args.manifest.read_text().splitlines()) == sorted(manifest.splitlines()),
+                    "Provided manifest differs from installed FIT rootfs packages")
+        report["rootfs_package_database"] = database
     if args.manifest:
         packages = {line.split(" - ", 1)[0] for line in args.manifest.read_text().splitlines()}
         required = set(report.get("config", {}).get("required_packages", []))
@@ -181,7 +227,7 @@ def main():
         require(required <= packages, "Packages absent from device manifest: " + repr(sorted(required - packages)))
         require(not forbidden & packages, "Disabled packages present in device manifest: " + repr(sorted(forbidden & packages)))
         report["manifest"] = {"file": args.manifest.name, "package_count": len(packages), "required_packages_present": sorted(required)}
-    if args.image:
+    if args.image and "image" not in report:
         report["image"] = check_image(args.image)
     require(args.config or args.image, "Provide --config, --image or --target-dir")
     output = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
@@ -193,5 +239,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, KeyError, OSError, UnicodeError, struct.error) as error:
+    except (ValueError, KeyError, OSError, UnicodeError, struct.error, subprocess.SubprocessError) as error:
         raise SystemExit("UBI compatibility check failed: " + str(error))

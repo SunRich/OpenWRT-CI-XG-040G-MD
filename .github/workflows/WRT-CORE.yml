@@ -34,6 +34,10 @@ on:
       WRT_BRANCH:
         required: true
         type: string
+      WRT_REVISION:
+        required: false
+        default: ''
+        type: string
       WRT_SOURCE:
         required: true
         type: string
@@ -55,6 +59,7 @@ env:
   WRT_PW: ${{inputs.WRT_PW}}
   WRT_REPO: ${{inputs.WRT_REPO}}
   WRT_BRANCH: ${{inputs.WRT_BRANCH}}
+  WRT_REVISION: ${{inputs.WRT_REVISION}}
   WRT_SOURCE: ${{inputs.WRT_SOURCE}}
   WRT_PACKAGE: ${{inputs.WRT_PACKAGE}}
   WRT_TEST: ${{inputs.WRT_TEST}}
@@ -99,6 +104,11 @@ jobs:
       - name: Clone Code
         run: |
           git clone --depth=1 --single-branch --branch $WRT_BRANCH $WRT_REPO ./wrt/
+
+          if [[ -n "$WRT_REVISION" ]]; then
+            git -C ./wrt fetch --depth=1 origin "$WRT_REVISION"
+            git -C ./wrt checkout --detach FETCH_HEAD
+          fi
 
           cd ./wrt/ && echo "WRT_HASH=$(git log -1 --pretty=format:'%h')" >> $GITHUB_ENV
 
@@ -176,6 +186,15 @@ jobs:
 
           make defconfig -j$(nproc) && make clean -j$(nproc)
 
+      - name: Validate XG-040G-MD UBI Configuration
+        if: env.WRT_CONFIG == 'AIROHA-WIFI-NO'
+        run: |
+          cd ./wrt/
+          python3 "$GITHUB_WORKSPACE/Scripts/Validate-XG040G-UBI.py" \
+            --config .config \
+            --seed "$GITHUB_WORKSPACE/Config/AIROHA-WIFI-NO.txt" \
+            --seed "$GITHUB_WORKSPACE/Config/GENERAL.txt"
+
       - name: Download Packages
         if: env.WRT_TEST != 'true'
         run: |
@@ -189,6 +208,19 @@ jobs:
           cd ./wrt/
 
           make -j$(nproc) || make -j1 V=s
+
+      - name: Validate XG-040G-MD UBI Firmware
+        if: env.WRT_CONFIG == 'AIROHA-WIFI-NO' && env.WRT_TEST != 'true'
+        run: |
+          cd ./wrt/
+          python3 "$GITHUB_WORKSPACE/Scripts/Validate-XG040G-UBI.py" \
+            --config .config \
+            --seed "$GITHUB_WORKSPACE/Config/AIROHA-WIFI-NO.txt" \
+            --seed "$GITHUB_WORKSPACE/Config/GENERAL.txt" \
+            --target-dir bin/targets/airoha/an7581 \
+            --output ubi-compatibility.json
+          git rev-parse HEAD > source-commit.txt
+          git -C "$GITHUB_WORKSPACE" rev-parse HEAD > ci-commit.txt
 
       - name: Machine Information
         run: |
@@ -212,7 +244,12 @@ jobs:
             echo "WRT_KVER=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^kernel - \K[\d\.]+' {} \;)" >> $GITHUB_ENV
             echo "WRT_LIST=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^luci-(app|theme)[^ ]*' {} \; | tr '\n' ' ')" >> $GITHUB_ENV
 
-            find ./bin/targets/ -iregex ".*\(buildinfo\|json\|sha256sums\|packages\)$" -exec rm -rf {} +
+            find ./bin/targets/ -type d -name packages -prune -exec rm -rf {} +
+            find ./bin/targets/ -type f -name sha256sums -delete
+
+            if [[ -f ubi-compatibility.json ]]; then
+              cp ubi-compatibility.json source-commit.txt ci-commit.txt ./upload/
+            fi
 
             for FILE in $(find ./bin/targets/ -type f -iname "*$WRT_TARGET*") ; do
               EXT=$(basename $FILE | cut -d '.' -f 2-)
@@ -223,6 +260,9 @@ jobs:
 
             find ./bin/targets/ -type f -exec mv -f {} ./upload/ \;
 
+            # 文件重命名后重新生成可用的校验清单
+            (cd ./upload/ && sha256sum -- *.* > SHA256SUMS)
+
             make clean -j$(nproc)
           fi
 
@@ -230,11 +270,11 @@ jobs:
         uses: softprops/action-gh-release@master
         with:
           tag_name: ${{env.WRT_CONFIG}}-${{env.WRT_INFO}}-${{env.WRT_BRANCH}}-${{env.WRT_DATE}}
-          files: ./wrt/upload/*.*
+          files: ./wrt/upload/*
           body: |
-            这是个平台固件包，内含多个设备！
-            请注意选择你需要的设备固件！
-            不要问，刷就完事了！
+            请按设备型号和当前分区布局选择固件。
+            XG-040G-MD 的 -ubi sysupgrade.itb 用于已经迁移到 UBI/FIT 布局的设备。
+            ubi-compatibility.json 包含 FIT 哈希、设备树分区及插件检查结果。
 
             全系带开源硬件加速，别问了！
 

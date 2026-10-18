@@ -73,7 +73,8 @@ def check_config(path, seeds):
     selected = re.findall(r"^(CONFIG_TARGET_DEVICE_\S+)=y$", data, re.M)
     require(selected == [TARGET], "Effective configuration must select only " + TARGET)
     enabled = set(re.findall(r"^(CONFIG_\S+)=y$", data, re.M))
-    required = {"CONFIG_PACKAGE_fitblk", "CONFIG_PACKAGE_luci", "CONFIG_TARGET_airoha_an7581"}
+    required = {"CONFIG_PACKAGE_fitblk", "CONFIG_PACKAGE_luci", "CONFIG_TARGET_airoha_an7581",
+                "CONFIG_PACKAGE_luci-theme-argon", "CONFIG_PACKAGE_luci-app-argon-config"}
     forbidden = set()
     for seed in seeds:
         for name, value in re.findall(r"^(CONFIG_PACKAGE_\S+)=(y|n)$", seed.read_text(), re.M):
@@ -84,7 +85,10 @@ def check_config(path, seeds):
                 "CONFIG_PACKAGE_luci-proto-wireguard", "CONFIG_PACKAGE_airoha-en7581-npu-firmware",
             }:
                 required.add(name)
-    require(required <= enabled, "Requested packages missing after defconfig: " + ", ".join(sorted(required - enabled)))
+    # Hidden device-default packages may be built as m with per-device rootfs;
+    # their installation is checked against the actual device manifest later.
+    available = enabled | (set(re.findall(r"^(CONFIG_PACKAGE_fitblk)=m$", data, re.M)))
+    require(required <= available, "Requested packages missing after defconfig: " + ", ".join(sorted(required - available)))
     require(not forbidden & enabled, "Disabled packages enabled: " + ", ".join(sorted(forbidden & enabled)))
     return {"profile": PROFILE, "required_packages": sorted(x.removeprefix("CONFIG_PACKAGE_") for x in required if x.startswith("CONFIG_PACKAGE_")),
             "disabled_packages": sorted(x.removeprefix("CONFIG_PACKAGE_") for x in forbidden)}

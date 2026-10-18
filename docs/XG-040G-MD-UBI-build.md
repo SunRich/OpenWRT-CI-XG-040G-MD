@@ -11,6 +11,14 @@
 - 保留 `Config/AIROHA-WIFI-NO.txt`、`Config/GENERAL.txt` 及原来的自定义包源。
 - LuCI/Argon、Tailscale、OpenClash、WireGuard、DDNS-Go、Samba、自动重启和 NPU
   界面等仍使用原配置。UPnP、PCP/NAT-PMP、WOL 和集客仍显式禁用。
+- 原 `bingoguo93/luci-app-airoha-npu` 仓库返回 404，同名 NPU 插件改从原作者
+  `rchen14b/luci-app-airoha-npu` 获取，固定提交
+  `14521b8414da1e98517a295d8ec267087c7dde8e`。自定义包克隆失败会停止构建。
+- `fitblk` 是隐藏的设备默认包；多设备根文件系统模式下，全局配置可以是 `m`，
+  最终必须出现在该设备的 manifest 中。
+
+本目标的源码默认使用 `lan1` 作 WAN，`lan2/3/4` 作 LAN。后续安装时应通过 LAN 口管理，
+并按实际需求重新配置 WAN/PON；不能假定与旧目标的端口角色相同。
 
 在 GitHub Actions 的 AIR-ALL 页面选择包含本次修改的分支，保持 TEST 关闭，运行完整构建。
 产物发布在 GitHub Releases。`source-commit.txt` 与 `ci-commit.txt` 记录实际使用的源码。

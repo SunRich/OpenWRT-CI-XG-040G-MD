@@ -9,6 +9,7 @@ UPDATE_PACKAGE() {
 	local PKG_BRANCH=$3
 	local PKG_SPECIAL=$4
 	local PKG_LIST=("$PKG_NAME" $5)  # 第5个参数为自定义名称列表
+	local PKG_REVISION=$6  # 可选：固定到已核验的提交
 	local REPO_NAME=${PKG_REPO#*/}
 
 	echo " "
@@ -31,7 +32,11 @@ UPDATE_PACKAGE() {
 	done
 
 	# 克隆 GitHub 仓库
-	git clone --depth=1 --single-branch --branch $PKG_BRANCH "https://github.com/$PKG_REPO.git"
+	git clone --depth=1 --single-branch --branch "$PKG_BRANCH" "https://github.com/$PKG_REPO.git" || exit 1
+	if [[ -n "$PKG_REVISION" ]]; then
+		git -C "$REPO_NAME" fetch --depth=1 origin "$PKG_REVISION" || exit 1
+		git -C "$REPO_NAME" checkout --detach FETCH_HEAD || exit 1
+	fi
 
 	# 处理克隆的仓库
 	if [[ "$PKG_SPECIAL" == "pkg" ]]; then
@@ -78,7 +83,8 @@ UPDATE_PACKAGE "qmodem" "FUjr/QModem" "main"
 #UPDATE_PACKAGE "quickfile" "sbwml/luci-app-quickfile" "main"
 #UPDATE_PACKAGE "timecontrol" "sirpdboy/luci-app-timecontrol" "main"
 #UPDATE_PACKAGE "vnt" "lmq8267/luci-app-vnt" "main"
-UPDATE_PACKAGE "luci-app-airoha-npu" "bingoguo93/luci-app-airoha-npu" "main"
+# 原 bingoguo93 插件仓库已不可访问，使用同名插件的原作者仓库。
+UPDATE_PACKAGE "luci-app-airoha-npu" "rchen14b/luci-app-airoha-npu" "main" "" "" "14521b8414da1e98517a295d8ec267087c7dde8e"
 
 #更新软件包版本
 UPDATE_VERSION() {
